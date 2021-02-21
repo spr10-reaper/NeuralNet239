@@ -3,10 +3,8 @@ import numpy as np
 class LSTM:
 	
 
-	def __init__(self, inputSize, outputSize, inputData):
+	def __init__(self, inputSize, outputSize):
 		
-		self.inputData = inputData
-
 		self.weightInputInput = np.random((outputSize, inputSize))
 		self.weightPrevious = np.random((outputSize, outputSize))
 		self.activationBiasInput = np.random(outputSize)
@@ -235,35 +233,35 @@ class LSTM:
 
 #--------------------functions for calculating------------------#
 
-	def forgetGate(self):
+	def forgetGate(self, inputData):
 	 	
-		inputForget = np.matmul(self.weightInputForget, self.inputData)
+		inputForget = np.matmul(self.weightInputForget, inputData)
 		previousForget = np.matmul(self.weightPreviousForget, self.previousOutput)
 		total = inputForget + previousForget + self.activationBiasForget
 
 		self.f = sigmoid(total)
 		return
-	def inputGate(self):
+	def inputGate(self, inputData):
 
-		inputInput = np.matmul(self.weightInputInput, self.inputData)
+		inputInput = np.matmul(self.weightInputInput, inputData)
 		previousInput = np.matmul(self.weightPreviousInput, self.previousOutput)
 		total = inputInput + previousInput + self.activationBiasInput
 
 		self.i = sigmoid(total)
 		return
 
-	def inputNode(self):
+	def inputNode(self, inputData):
 
-		inputNode = np.matmul(self.weightInputNode, self.inputData)
+		inputNode = np.matmul(self.weightInputNode, inputData)
 		previousNode = np.matmul(self.weightPreviousNode, self.previousOutput)
 		total = inputNode + previousNode + self.activationBiasNode
 
 		self.i = sigmoid(total)
 		return
 
-	def outputGate(self):
+	def outputGate(self, inputData):
 
-		inputOutput = np.matmul(self.weightInputOutput, self.inputData)
+		inputOutput = np.matmul(self.weightInputOutput, inputData)
 		previousOutput = np.matmul(self.weightPreviousOutput, self.previousOutput)
 		total = inputOutput + previousOutput + self.activationBiasOutput
 
@@ -289,14 +287,117 @@ class LSTM:
 
 		self.currentOutput = self.o * np.tanh(self.currentState)
 
-		return
+		return self.currentOutput
 
 #----------------end functions for calculating------------------#
-	
-	
-class Layer:
 
-	def __init__(self, numberOfNodes, ):
 
+class NormalMultivariate:
+
+	def __init__(self, mean, std):
+
+		self.meanVec = mean
+		self.covMat = std
+
+	def sample(self):
+
+		sample = np.random.Generator.normal(size = self.meanVec.shape)
+		fullSample = self.meanVec + self.covMat * sample
+		covMatDet = np.dot(self.covMat, self.covMat)
+		dimensions = len(self.covMat)
+
+		quadratic = np.matmul(np.transpose(fullSample - self.meanVec), np.matmul(np.eye(dimensions) * covMat, (fullSample - self.meanVec)))
+
+		logLikelihood = -0.5 * (np.log(covMatDet) + quadratic + dimensions * np.log(2 * np.pi))
+		
+		return fullSample, logLikelihood
+
+	def entropy(self):
+		
+		covMatDet = np.dot(self.covMat, self.covMat)
+		dimensions = len(self.covMat)
+		entropy = dimensions * ( 1 + np.log(2 * np.pi)) / 2 + np.log(covMatDet) / 2
+
+
+		return entropy
+		
 
 		
+
+
+	
+	
+class Model:
+
+	def __init__(self, numberOfNodes, inputData):
+		
+		self.actionLayer = [LSTM(numberOfNodes[i], numberOfNodes[i+1]) for i in range(len(numberOfNodes) - 1)])
+		
+		self.valueLayer = [LSTM(numberOfNodes[i], numberOfNodes[i+1]) for i in range(len(numberOfNodes) - 1)])
+		self.actionLayer.append(LSTM(numberOfNodes[-1], outputSize))
+		self.valueLayer.append(LSTM(numberOfNodes[-1], outputSize))
+
+
+		self.actions = []
+		self.states = []
+		self.logProbs = []
+		self.stateValues = []
+		self.rewards = []
+
+
+	def clearMemory(self):
+		del self.actions[:]
+		del self.states[:]
+		del self.logProbs[:]
+		del self.stateValues[:]
+		del self.rewards[:]
+		
+
+	def forwardPropagate(self, inputData):
+
+		data = inputData
+		for module in self.valueLayer:
+			
+			module.inputData = data
+			data = module.returnOutput()
+
+		return np.arctanh(data)
+
+	
+	def actionPropagate(self, inputData):
+		
+		data = inputData
+
+		for module in self.actionLayer:
+			
+			module.inputData = data
+			data = module.returnOutput()
+
+		return np.arctanh(data)
+
+	
+
+	def fullForward(self, inputData, action=None, evaluate=False):
+
+		stateFull = self.forwardPropagate(inputData)
+		stateValue = stateFull[:len(stateFull)]
+		stateSTD = stateFull[len(stateFull):]
+
+		actionFull = self.actionPropagate(inputData)
+		actionValue = actionFull[:len(actionFull)]
+		actionSTD = actionFull[len(actionFull):]
+		
+		actionDistribution = NormalMultivariate(actionMean, actionSTD)
+		
+		action, logProb = actionDistribution.sample()
+
+		self.actions.append(action)
+		self.logProbs.append(logProb)
+		self.stateValues.append(stateValue)
+
+		return actionDistribution.entropy()
+		if not evaluate:
+			
+
+
+			
